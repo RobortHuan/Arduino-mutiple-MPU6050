@@ -1,0 +1,103 @@
+#include <Servo.h>
+#include <I2Cdev.h>
+#include <MPU6050.h>
+#include <Wire.h>//添加必须的库文件
+//====一下三个定义了陀螺仪的偏差===========
+#define Gx_offset -4
+#define Gy_offset 1.01
+#define Gz_offset -0.6
+//====================
+MPU6050 accelgyro;
+Servo servo1;
+ 
+int16_t ax,ay,az;
+int16_t gx,gy,gz;//存储原始数据
+float aax,aay,aaz,ggx,ggy,ggz;//存储量化后的数据
+float Ax,Ay,Az;//单位 g(9.8m/s^2)
+float Gx,Gy,Gz;//单位 °/s
+ 
+float Angel_accX,Angel_accY,Angel_accZ;//存储加速度计算出的角度
+ 
+long LastTime,NowTime,TimeSpan;//用来对角速度积分的
+ 
+#define LED_PIN 13
+ 
+bool blinkState=false;
+ 
+void setup()//MPU6050的设置都采用了默认值，请参看库文件
+{
+
+  servo1.attach(5);
+  Serial.begin(9600);
+ 
+ 
+  accelgyro.initialize();
+ 
+ 
+  pinMode(LED_PIN,OUTPUT);
+}
+ 
+void loop()
+{
+  accelgyro.getMotion6(&ax,&ay,&az,&gx,&gy,&gz);//获取三个轴的加速度和角速度
+//  Serial.print(ax/16384.00);
+//  Serial.print(",");
+//  Serial.print(ay/16384.00);
+//  Serial.print(",");
+//  Serial.print(az/16384.00);
+//  Serial.print(",");
+//  Serial.print(gx/131.00);
+//  Serial.print(",");
+//  Serial.print(gy/131.00);
+//  Serial.print(",");
+//  Serial.println(gz/131.00);
+//======一下三行是对加速度进行量化，得出单位为g的加速度值
+   Ax=ax/16384.00;
+   Ay=ay/16384.00;
+   Az=az/16384.00;
+   //==========以下三行是用加速度计算三个轴和水平面坐标系之间的夹角
+//请参考：[url]http://www.geek-workshop.com/forum.php?mod=viewthread&tid=2328&page=1#pid27876[/url]
+//个人觉得原帖中case0算的不对，应该是z/sqrt（x*x+y*y），估计是江南楼主写错了
+   Angel_accX=atan(sqrt(Az*Az+Ay*Ay)/Ax)*180/3.14+90;
+   Angel_accY=atan(sqrt(Ax*Ax+Az*Az)/Ay)*180/3.14-90;
+   Angel_accZ=atan(sqrt(Ax*Ax+Ay*Ay)/Az)*180/3.14;
+   //==========以下三行是对角速度做量化==========
+   ggx=gx/131.00;
+   ggy=gy/131.00;
+   ggz=gz/131.00;
+ 
+  //===============以下是对角度进行积分处理================
+  NowTime=millis();//获取当前程序运行的毫秒数
+  TimeSpan=NowTime-LastTime;//积分时间这样算不是很严谨
+//下面三行就是通过对角速度积分实现各个轴的角度测量，当然假设各轴的起始角度都是0
+  Gx=Gx+(ggx-Gx_offset)*TimeSpan/1000;
+  Gy=Gy+(ggy-Gy_offset)*TimeSpan/1000;
+  Gz=Gz+(ggz-Gz_offset)*TimeSpan/1000;
+ 
+  LastTime=NowTime;
+ 
+  int angle=Angel_accY+90;
+  
+  servo1.write(angle);
+  delay(15);
+  
+  //==============================
+Serial.print(Angel_accX);
+Serial.print("a");
+Serial.print(Angel_accY);
+Serial.print("b");
+Serial.println(Angel_accZ);
+
+//  Serial.println(Angel_accY);
+
+//  Serial.print(ggx-Gx_offset);
+//  c
+//  Serial.print(ggy-Gy_offset);
+//  Serial.print(",");
+//  Serial.println(ggz-Gz_offset);
+ 
+  blinkState=!blinkState;
+  digitalWrite(LED_PIN,blinkState);
+ 
+  delay(50);//这个用来控制采样速度
+}
